@@ -1,0 +1,6 @@
+{
+  "masterPassword": {
+    "type": "Bitwarden",
+    "bitwardenVaultEntryName": "Foo"
+  }
+}
