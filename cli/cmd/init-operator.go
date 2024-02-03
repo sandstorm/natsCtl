@@ -11,6 +11,8 @@ import (
 	"github.com/sandstorm/natsCtl/cli/config"
 	"github.com/spf13/cobra"
 	"os"
+	"regexp"
+	"strings"
 )
 
 //nolint:funlen
@@ -27,6 +29,7 @@ When you run this command,
 		Run: func(cmd *cobra.Command, args []string) {
 			var err error
 			operator := OperatorName(os.Getenv("OPERATOR_NAME"))
+			natsServerUrl := os.Getenv("NATS_SERVER_URL")
 			accountServerUrl := os.Getenv("ACCOUNT_SERVER_URL")
 
 			//////////////////////////////////////////
@@ -48,13 +51,22 @@ When you run this command,
 				operator = OperatorName(common.RequiredTextInput("OPERATOR_NAME"))
 			}
 
+			// the service URL is the default server URL for connecting
+			if natsServerUrl == "" {
+				pterm.Println("Specify NATS service URL where this operator will be used:")
+				pterm.Println("(required for nsc push and nsc pull). Examples: tls://your.domain:4222")
+				natsServerUrl = common.TextInputMatchingRegex("NATS_SERVER_URL", regexp.MustCompile(`^(tls|nats)://`))
+			}
+
 			// the service URL is required for "nsc push" and "nsc pull" to work properly.
 			if accountServerUrl == "" {
-				pterm.Println("Specify NATS service URL where this operator will be used:")
-				pterm.Println("(required for nsc push and nsc pull). Examples: nats://127.0.0.1:4222")
+				accountServerUrl = strings.ReplaceAll(natsServerUrl, "tls://", "nats://")
+				pterm.Println("NATS account server URL where this operator will be used is derived from NATS_SERVER_URL")
+				pterm.Println("(required for nsc push and nsc pull).")
+				pterm.Println("NOTE: This must be specified with the nats:// protocol to work, without encryption - so tls:// protocol does NOT work here.")
+				pterm.Println("The server needs tls.allowNonTLS: true to work with this.")
+				pterm.Printfln("    ACCOUNT_SERVER_URL=", accountServerUrl)
 				// TODO: seems that NSC push do not work over TLS for whatever reason :(
-				pterm.Println("NOTE: This must be specified with the nats:// protocol to work, without encryption.")
-				accountServerUrl = common.RequiredTextInput("ACCOUNT_SERVER_URL")
 			}
 
 			pterm.Info.Printfln("Creating operator %s", bold.Sprint(operator))
@@ -90,6 +102,8 @@ When you run this command,
 			operatorClaims.Name = string(operator)
 			operatorClaims.SystemAccount = publicKey(systemAccountNKey)
 			operatorClaims.AccountServerURL = accountServerUrl
+			// this way, we do not need to specify the server URLs when connecting.
+			operatorClaims.OperatorServiceURLs = strings.Split(natsServerUrl, ",")
 			operatorClaims.SigningKeys.Add(publicKey(operatorSigningNkey))
 			operatorJwt := writeOperator(operator, operatorClaims, operatorSigningNkey)
 			sysAccountJwt := writeAccount(operator, sysClaims, operatorSigningNkey)
